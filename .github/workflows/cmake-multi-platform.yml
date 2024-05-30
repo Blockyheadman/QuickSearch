@@ -78,6 +78,6 @@ jobs:
       if: startsWith(github.ref, 'refs/tags/')
       with:
         files: |
-          QuickSearch.exe
-          QuickSearch
+          D:/a/QuickSearch/QuickSearch/build/QuickSearch.exe
+          /home/runner/work/QuickSearch/QuickSearch/build/QuickSearch
         
