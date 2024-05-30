@@ -5,6 +5,7 @@ name: CMake on multiple platforms
 on:
   schedule:
   - cron: "0 17 * * 4"
+  workflow_dispatch:
 
 jobs:
   build:
