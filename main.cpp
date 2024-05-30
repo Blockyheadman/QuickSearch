@@ -7,39 +7,52 @@
 #include <fstream>
 
 // TODO Add verbose '-v' for debugging
-// TODO Add capitalization sensitivity for search query '-c'
 // TODO Add support for highlighting multiple items on the same line.
-// TODO [MAJOR] Change the file query result string into an array of strings/structs/classes to not run into long string errors.
 
 namespace fs = std::filesystem;
 
-// inline std::string boolString(const bool input) { return input ? "true" : "false"; }
-
-void getFileQueries(const fs::path &filePath, const std::string &searchQuery, const bool useAbsolute,
-                    const bool hideEmptyQueries, const std::string &fileName) {
+/**
+ * Searches and prints a list of queries found in a file.
+ *
+ * @param filePath The file path to search.
+ * @param searchQuery The query to search for.
+ * @param useAbsolute Print absolute directories.
+ * @param hideEmptyQueries Skips queries that have 0 results.
+ * @param ignoreCase Ignores casing of letters.
+ * @param fileName The name of the file to output to. If blank, this will not print to a file.
+ *
+ * @return A total of queries found in the file.
+ */
+int getFileQueries(const fs::path &filePath, const std::string &searchQuery, const bool useAbsolute,
+                   const bool hideEmptyQueries, const bool ignoreCase, const std::string &fileName) {
+    // Create the output file if applicable
     std::ofstream outputFile;
     if (!fileName.empty())
-        outputFile.open(fileName, std::ofstream::out | std::ofstream::app);
+        outputFile.open(fileName + ".temp", std::ofstream::out | std::ofstream::app);
 
-    // std::cout << "--------------------\n" << (useAbsolute
-    //                                               ? fs::absolute(filePath).string()
-    //                                               : fs::relative(filePath).string()) << ":\n\n";
-    // if (outputFile)
-    //     outputFile << "--------------------\n" << (useAbsolute
-    //                                                    ? fs::absolute(filePath).string()
-    //                                                    : fs::relative(filePath).string()) << ":\n\n";
-
-    std::vector<std::stringstream> queryResults;
-
+    // Setup the file to read
     std::ifstream file;
     file.open(filePath.string(), std::ifstream::in);
 
+    // Setup the file query and line variables.
     std::string fileLine;
+    std::vector<std::stringstream> queryResults;
+    std::vector<std::stringstream> queryLines;
     int fileLineNum = 1;
     int resultCount = 0;
 
+    // Loop over all lines in the file
     while (std::getline(file, fileLine)) {
-        std::string::size_type fileLineCharNum = fileLine.find(searchQuery);
+        std::string::size_type fileLineCharNum;
+        if (ignoreCase) {
+            std::string noCasingFileLine{fileLine};
+            std::transform(noCasingFileLine.begin(), noCasingFileLine.end(), noCasingFileLine.begin(),
+                           [](const unsigned char c) { return std::tolower(c); });
+            fileLineCharNum = noCasingFileLine.find(searchQuery);
+        } else {
+            fileLineCharNum = fileLine.find(searchQuery);
+        }
+
         if (fileLineCharNum != std::string::npos) {
             // Erase beginning whitespace on the line string
             int beginningWhitespaceCount = 0;
@@ -56,36 +69,36 @@ void getFileQueries(const fs::path &filePath, const std::string &searchQuery, co
             std::stringstream queryResult;
             queryResult << "Line " << fileLineNum << ":\n";
 
-            if (fileLine.length() <= 80) {
+            if (fileLine.length() <= searchQuery.length() + 80) {
                 queryResult << fileLine << '\n';
                 for (int i = 0; i < fileLineCharNum; i++)
                     queryResult << " ";
                 for (int i = 0; i < searchQuery.length(); i++)
                     queryResult << "~";
             } else {
-                // Check if center of query is further left or right.
-                // unsigned long long fileLineLength = fileLine.length();
-                if (fileLineCharNum + searchQuery.length() / 2 <= fileLine.length() / 2) {
-                    unsigned long long charsToRemove = fileLine.length() / 2 + fileLineCharNum - searchQuery.length();
-                    queryResult << fileLine.erase(charsToRemove, fileLine.length()) << " ...\n";
-                    for (int i = 0; i < fileLineCharNum; i++)
-                        queryResult << " ";
-                    for (int i = 0; i < searchQuery.length(); i++)
-                        queryResult << "~";
-                } else {
-                    unsigned long long charsToRemove = fileLine.length() - fileLineCharNum / 2 + searchQuery.length();
-                    queryResult << "... " << fileLine.erase(0, charsToRemove) << '\n';
-                    for (int i = 0; i < fileLineCharNum - charsToRemove + 4; i++)
-                        queryResult << " ";
-                    for (int i = 0; i < searchQuery.length(); i++)
-                        queryResult << "~";
+                // check if left side of search query has more than 20 characters.
+                if (fileLineCharNum > 20 && fileLineCharNum - 20 > 0) {
+                    fileLine.erase(0, fileLineCharNum - 20);
+                    fileLine.insert(0, "... ");
+                    fileLineCharNum = 24;
                 }
+                // check if right side has more than 20 characters.
+                if (fileLineCharNum < fileLine.length() - 20 && fileLineCharNum + searchQuery.length() + 20 < fileLine.
+                    length()) {
+                    fileLine.erase(fileLineCharNum + searchQuery.length() + 20, fileLine.length());
+                    fileLine.append(" ...");
+                }
+
+                queryResult << fileLine << '\n';
+
+                for (int i = 0; i < fileLineCharNum; i++)
+                    queryResult << " ";
+                for (int i = 0; i < searchQuery.length(); i++)
+                    queryResult << "~";
             }
 
             queryResult << '\n';
-
             queryResults.push_back(std::move(queryResult));
-
             resultCount++;
         }
         fileLineNum++;
@@ -122,9 +135,9 @@ void getFileQueries(const fs::path &filePath, const std::string &searchQuery, co
         }
 
         std::cout << "----------------------------\n" << (useAbsolute
-                                                                   ? fs::absolute(filePath).string()
-                                                                   : fs::relative(filePath).string()) << ":\n" <<
-                    "----------------------------\n\n";
+                                                              ? fs::absolute(filePath).string()
+                                                              : fs::relative(filePath).string()) << ":\n" <<
+                "----------------------------\n\n";
         std::cout << "Found " << resultCount << (resultCount == 1 ? " query\n\n" : " queries\n\n");
         for (const std::stringstream &queryResult: queryResults)
             std::cout << queryResult.str();
@@ -133,16 +146,12 @@ void getFileQueries(const fs::path &filePath, const std::string &searchQuery, co
 
     if (outputFile)
         outputFile.close();
+
+    return resultCount;
 }
 
 int main(const int argc, char **argv) {
-    // Debug print arg count and args
-    // std::cout << "Argument count: " << argc << '\n';
-    // for (int i = 0; i < argc; i++) {
-    //     std::cout << "Argument " << i << ": " << argv[i] << '\n';
-    // }
-    // std::cout << '\n';
-
+    // Print extra line to seperate from the rest of the console
     std::cout << std::endl;
 
     // If there's less than the 3 minimum args, print the help text
@@ -160,23 +169,27 @@ int main(const int argc, char **argv) {
                 << "Arguments:\n"
                 << "-f <file-name> Searches a file in the given directory. Use multiple switches for many files.\n"
                 << "-p Shows the full path instead of relative.\n"
-                << "-o [file-name] Outputs the results to a file as well. File name is optional.\n"
-                << "-h Hides queries that have 0 results from output.\n";
+                << "-o [file-name] Outputs the results to a file. File name is optional.\n"
+                << "-h Hides files that have 0 queries from output.\n"
+                << "-c Ignores casing of the search query.\n";
         std::cout << "\nPress enter to quit:" << std::endl;
         std::cin.get();
-        return 0;
+        return -1;
     }
 
     const fs::path currentPath = fs::absolute(argv[argc - 2]);
     const std::string searchQuery{argv[argc - 1]};
 
+    // Check if the query is consiting of only whitespace or empty.
     if (searchQuery.empty() || std::all_of(searchQuery.begin(), searchQuery.end(), isspace)) {
         std::cerr << "Enter a valid query." << std::endl;
-        return -1;
+        return 1;
     }
 
+    // Switch parameters
     bool showFullPath = false;
     bool hideEmptyQueries = false;
+    bool ignoreCase = false;
     std::vector<fs::path> filePaths;
     std::string fileName;
 
@@ -187,7 +200,7 @@ int main(const int argc, char **argv) {
                 case 'f':
                     if (argv[i + 1] == currentPath.string() || argv[i + 1] == searchQuery || argv[i + 1][0] == '-') {
                         std::cerr << "Missing file name" << std::endl;
-                        return -1;
+                        return 2;
                     }
                     filePaths.emplace_back(argv[i + 1]);
                     i++;
@@ -198,7 +211,7 @@ int main(const int argc, char **argv) {
                         showFullPath = true;
                     } else {
                         std::cerr << "Switch \"" << argv[i] << "\" has already been used." << std::endl;
-                        return -1;
+                        return 3;
                     }
                     break;
 
@@ -216,23 +229,33 @@ int main(const int argc, char **argv) {
                     break;
 
                 case 'h':
-                    if (!showFullPath) {
+                    if (!hideEmptyQueries) {
                         hideEmptyQueries = true;
                     } else {
                         std::cerr << "Switch \"" << argv[i] << "\" has already been used." << std::endl;
-                        return -1;
+                        return 3;
+                    }
+                    break;
+
+                case 'c':
+                    if (!ignoreCase) {
+                        ignoreCase = true;
+                    } else {
+                        std::cerr << "Switch \"" << argv[i] << "\" has already been used." << std::endl;
+                        return 3;
                     }
                     break;
 
                 default:
                     std::cerr << "Invalid argument \"" << argv[i] << '"' << std::endl;
-                    return -1;
+                    return 4;
             }
         } else {
-            std::cerr << "Unrecognized argument \"" << argv[i] << '"' << std::endl;
-            return -1;
+            std::cerr << "Invalid argument \"" << argv[i] << '"' << std::endl;
+            return 4;
         }
     }
+
     // Debug prints to show if certain parameters are active and/or their values.
     // std::cout << "fileNames: [";
     // for (int i = 0; i < filePaths.size(); i++)
@@ -240,34 +263,53 @@ int main(const int argc, char **argv) {
     // std::cout << "]\n";
     // std::cout << "showFullPath: " << (showFullPath ? "true" : "false") << "\n\n";
 
-    // Check if folder exists
+    // Check if folder exists and set the current path to it.
     if (!fs::is_directory(currentPath)) {
         std::cerr << "Invalid folder \"" << currentPath.string() << '"' << std::endl;
-        return -1;
+        return 5;
     }
     fs::current_path(currentPath);
 
+    int totalQueries = 0;
+
     // Either check for files that have the content or specific files.
     if (filePaths.empty()) {
-        for (const fs::directory_entry &dir_entry: fs::recursive_directory_iterator(currentPath)) {
+        for (const fs::directory_entry &dir_entry: fs::recursive_directory_iterator(currentPath))
             // Loop over directory contents
-            if (dir_entry.is_regular_file()) {
-                getFileQueries(fs::absolute(dir_entry.path()), searchQuery, showFullPath, hideEmptyQueries, fileName);
-                // if (showFullPath) {
-                //     std::cout << fs::absolute(dir_entry).string() << '\n';
-                // } else {
-                //     std::cout << dir_entry.path().string() << '\n';
-                // }
-            }
-        }
+            if (dir_entry.is_regular_file())
+                totalQueries += getFileQueries(fs::absolute(dir_entry.path()), searchQuery, showFullPath,
+                                               hideEmptyQueries, ignoreCase, fileName);
     } else {
         for (const fs::path &filePath: filePaths) {
-            if (fs::exists(fs::status(fs::absolute(filePath)))) {
-                getFileQueries(filePath, searchQuery, showFullPath, hideEmptyQueries, fileName);
-            } else {
+            // Check if the file exists
+            if (fs::exists(fs::status(fs::absolute(filePath))))
+                totalQueries += getFileQueries(filePath, searchQuery, showFullPath, hideEmptyQueries, ignoreCase,
+                                               fileName);
+            else
                 std::cout << "File \"" << filePath.string() << "\" not found in \"" << currentPath.string() << "\"\n\n";
-            }
         }
+    }
+
+    std::cout << "Successfully found " << totalQueries << " query items." << std::endl;
+    if (!fileName.empty()) {
+        // Open the final result file
+        std::ofstream fileOutput;
+        fileOutput.open(fileName, std::ofstream::out | std::ofstream::app);
+
+        // Open the temp result file
+        std::ifstream fileInput;
+        fileInput.open(fileName + ".temp", std::ifstream::in);
+
+        // Write the temp contents and total queries to output file
+        fileOutput << "Successfully found " << totalQueries << " query items.\n\n";
+        std::string fileLine;
+        while (std::getline(fileInput, fileLine))
+            fileOutput << fileLine << '\n';
+
+        // close output and input files and delete temp file
+        fileInput.close();
+        fileOutput.close();
+        remove((fileName + ".temp").c_str());
     }
 
     return 0;
