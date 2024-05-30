@@ -7,7 +7,6 @@
 #include <fstream>
 
 // TODO Add verbose '-v' for debugging
-// TODO Add hide empty results '-h'
 // TODO Add capitalization sensitivity for search query '-c'
 // TODO Add support for highlighting multiple items on the same line.
 // TODO [MAJOR] Change the file query result string into an array of strings/structs/classes to not run into long string errors.
