@@ -167,11 +167,12 @@ int main(const int argc, char **argv) {
                 << "Searches files that contain a given string.\n\n"
                 << "Syntax: " << programName << " [args] <folder> <query>\n\n"
                 << "Arguments:\n"
+                << "-c Ignores casing of the search query.\n"
                 << "-f <file-name> Searches a file in the given directory. Use multiple switches for many files.\n"
-                << "-p Shows the full path instead of relative.\n"
-                << "-o [file-name] Outputs the results to a file. File name is optional.\n"
                 << "-h Hides files that have 0 queries from output.\n"
-                << "-c Ignores casing of the search query.\n";
+                << "-o [file-name] Outputs the results to a file. File name is optional.\n"
+                << "-p Shows the full path instead of relative.\n"
+                << "-r Does a recursive check through the given folder.\n";
         std::cout << "\nPress enter to quit:" << std::endl;
         std::cin.get();
         return -1;
@@ -189,6 +190,7 @@ int main(const int argc, char **argv) {
     // Switch parameters
     bool showFullPath = false;
     bool hideEmptyQueries = false;
+    bool recursiveCheck = false;
     bool ignoreCase = false;
     std::vector<fs::path> filePaths;
     std::string fileName;
@@ -198,9 +200,14 @@ int main(const int argc, char **argv) {
         if ('-' == argv[i][0] || '/' == argv[i][0]) {
             switch (argv[i][1]) {
                 case 'f':
-                    if (argv[i + 1] == currentPath.string() || argv[i + 1] == searchQuery || argv[i + 1][0] == '-') {
+                    if (argv[i + 1] == currentPath.string() || argv[i + 1] == searchQuery || argv[i + 1][0] == '-' ||
+                        '/' == argv[i][0]) {
                         std::cerr << "Missing file name" << std::endl;
                         return 2;
+                    }
+                    if (recursiveCheck) {
+                        std::cerr << "Can't use file search when using recursive check." << std::endl;
+                        return 6;
                     }
                     filePaths.emplace_back(argv[i + 1]);
                     i++;
@@ -216,13 +223,10 @@ int main(const int argc, char **argv) {
                     break;
 
                 case 'o':
-                    if (argv[i + 1] == currentPath.string() || argv[i + 1] == searchQuery || argv[i + 1][0] == '-') {
+                    if (argv[i + 1] == currentPath.string() || argv[i + 1] == searchQuery || argv[i + 1][0] == '-' ||
+                        '/' == argv[i][0]) {
                         fileName = fs::absolute(currentPath).string() + "-search-results.txt";
                     } else {
-                        // if (!fs::path(argv[i + 1]).has_extension()) {
-                        //     std::cerr << "File output name requires an extention." << std::endl;
-                        //     return -1;
-                        // }
                         fileName = fs::absolute(currentPath).parent_path().append(argv[i + 1]).string();
                         i++;
                     }
@@ -240,6 +244,19 @@ int main(const int argc, char **argv) {
                 case 'c':
                     if (!ignoreCase) {
                         ignoreCase = true;
+                    } else {
+                        std::cerr << "Switch \"" << argv[i] << "\" has already been used." << std::endl;
+                        return 3;
+                    }
+                    break;
+
+                case 'r':
+                    if (!recursiveCheck) {
+                        if (!filePaths.empty()) {
+                            std::cerr << "Can't use recursive check when searching with files." << std::endl;
+                            return 7;
+                        }
+                        recursiveCheck = true;
                     } else {
                         std::cerr << "Switch \"" << argv[i] << "\" has already been used." << std::endl;
                         return 3;
@@ -274,11 +291,19 @@ int main(const int argc, char **argv) {
 
     // Either check for files that have the content or specific files.
     if (filePaths.empty()) {
-        for (const fs::directory_entry &dir_entry: fs::recursive_directory_iterator(currentPath))
-            // Loop over directory contents
-            if (dir_entry.is_regular_file())
-                totalQueries += getFileQueries(fs::absolute(dir_entry.path()), searchQuery, showFullPath,
-                                               hideEmptyQueries, ignoreCase, fileName);
+        if (recursiveCheck) {
+            for (const fs::directory_entry &dir_entry: fs::recursive_directory_iterator(currentPath))
+                // Loop over directory contents
+                if (dir_entry.is_regular_file())
+                    totalQueries += getFileQueries(fs::absolute(dir_entry.path()), searchQuery, showFullPath,
+                                                   hideEmptyQueries, ignoreCase, fileName);
+        } else {
+            for (const fs::directory_entry &dir_entry: fs::directory_iterator(currentPath))
+                // Loop over directory contents
+                if (dir_entry.is_regular_file())
+                    totalQueries += getFileQueries(fs::absolute(dir_entry.path()), searchQuery, showFullPath,
+                                                   hideEmptyQueries, ignoreCase, fileName);
+        }
     } else {
         for (const fs::path &filePath: filePaths) {
             // Check if the file exists
