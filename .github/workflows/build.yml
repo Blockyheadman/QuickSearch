@@ -1,0 +1,47 @@
+name: C/C++ CI
+
+on:
+  push:
+    branches: [ "master" ]
+  pull_request:
+    branches: [ "master" ]
+  schedule:
+  - cron: "0 18 * * 4"
+  workflow_dispatch:
+  
+
+jobs:
+  build-linux:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v2
+      - name: Install CMake
+        run: sudo apt-get install cmake -y
+      - name: Build
+        run: |
+          mkdir build
+          cd build
+          cmake ..
+          make
+
+  build-windows:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v2
+      - name: Configure CMake
+        run: cmake -B build -G "Visual Studio 2022"
+      - name: Build
+        run: cmake --build build --config Release
+
+  build-macos:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v2
+      - name: Install CMake
+        run: brew install cmake
+      - name: Build
+        run: |
+          mkdir build
+          cd build
+          cmake ..
+          make
